@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<types:mule xmlns:types="http://www.mulesoft.org/schema/mule/types">
+  <types:catalog>
+    <types:type name="val" format="java">
+      <types:shape format="java" element="java.lang.String"/>
+    </types:type>
+  </types:catalog>
+  <types:enrichment select="#cb89daf2-9395-41c5-9985-6f3539aec2f7"/>
+</types:mule>

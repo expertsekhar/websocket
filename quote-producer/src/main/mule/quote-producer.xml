@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:websocket="http://www.mulesoft.org/schema/mule/websocket"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/websocket http://www.mulesoft.org/schema/mule/websocket/current/mule-websocket.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/sockets http://www.mulesoft.org/schema/mule/sockets/current/mule-sockets.xsd">
+	
+	<!-- <tls:context name="TLS_Context">
+        <tls:key-store
+		path="producer-keystore.jks"
+		alias="producerkey"
+		keyPassword="mule123"
+		password="mule123" />
+    </tls:context> -->
+
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection
+		host="localhost"
+		port="8083"/>
+    </http:listener-config>
+
+   <!--  <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="0.0.0.0" port="60001" />
+    </http:listener-config> -->
+
+    <websocket:config name="WebSockets_Config">
+        <websocket:connection >
+            <websocket:server-settings listenerConfig="HTTP_Listener_config"/>
+        </websocket:connection>
+    </websocket:config>
+
+    <os:object-store name="Object_store" persistent="false" />
+
+ 	<flow name="stock-quotes-producer-flow">
+        <scheduler>
+            <scheduling-strategy >
+                <fixed-frequency frequency="15" timeUnit="SECONDS"/>
+            </scheduling-strategy>
+        </scheduler>
+
+        <ee:transform doc:name="Transform Message" doc:id="8fb0a750-74b4-40e6-8a9b-7df01e14790a">
+            <ee:message >
+                <ee:set-payload ><![CDATA[%dw 2.0
+                    var randomStockSelector = randomInt(5)
+                    var randomPriceVariation = (randomInt(401) / 100) - 2 as String { format: "#.00"} as Number
+                    var baseStockQuotes = [
+                        {
+                            "ticker": "CRM",
+                            "price": 157.6,
+                            "cur": "USD"
+                        },
+                        {
+                            "ticker": "MELI",
+                            "price": 646.24,
+                            "cur": "USD"
+                        },
+                        {
+                            "ticker": "GOOG",
+                            "price": 1134.14,
+                            "cur": "USD"
+                        },
+                        {
+                            "ticker": "NFLX",
+                            "price": 316.53,
+                            "cur": "USD"
+                        },
+                        {
+                            "ticker": "AAPL",
+                            "price": 208.19,
+                            "cur": "USD"
+                        }
+                    ]
+                    var selectedStock = baseStockQuotes[randomStockSelector]
+                    output application/json
+                    ---
+                    {
+                        ticker : selectedStock.ticker,
+                        price : selectedStock.price + randomPriceVariation,
+                        cur : selectedStock.cur,
+                        timestamp : now() as Number
+                    }]]>
+                </ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <!-- logger level="INFO" doc:name="Logger" doc:id="1cc9afc1-a10b-4af6-a5b9-c5935dbbae0d" message="#[payload]"/-->
+		<flow-ref name="send-stock-quote-flow"/>
+    </flow>
+
+    <flow name="send-stock-quote-flow">
+	
+			<os:contains
+		objectStore="Object_store"
+		key="webSocketConnectedId"
+		target="webSocketConnected"/>
+        <choice>
+            <when expression="#[vars.webSocketConnected]">
+            <set-variable value="#[payload]" doc:name="Set Variable" doc:id="1db0ba18-fe51-4550-81cc-a8ec4c3a74f3" variableName="quotes"/> 
+                <os:retrieve
+			objectStore="Object_store"
+			target="webSocketConnectedId"
+			key="webSocketConnectedId" />
+			
+				<logger level="INFO" doc:name="Logger" doc:id="4c0c2115-3bce-499f-b2d6-b75148c51178" message="#[vars.webSocketConnectedId]"/>
+				<foreach doc:name="For Each" doc:id="5dd8285b-3b94-4ab6-b59a-b26b3f650ba0" collection="#[vars.webSocketConnectedId]">
+				<logger level="INFO" doc:name="Logger" doc:id="51ea9e3c-c2bf-4848-baa9-06bbf9eb34d2" message="#[if(typeOf(payload)=='Array') payload[0] else payload]"/>
+					<websocket:send
+			socketId="#[if(typeOf(payload)=='Array') payload[0] else payload]"
+			config-ref="WebSockets_Config" doc:id="413832ce-78ce-4023-9fe4-157aea1b25c2">
+						<websocket:content ><![CDATA[#[vars.quotes]]]></websocket:content>
+					</websocket:send>
+				</foreach>
+				
+            </when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="ba296421-7a9f-4d36-b35e-47822d7c01c5" message="sessionId not available"/>
+				
+			</otherwise>
+        </choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e04f5cc2-b496-4743-9045-8db6a19eb054" >
+				<logger level="INFO" doc:name="Logger" doc:id="bb1328ab-5f32-4f08-adb7-ec0c8af3fc7e" message="#[payload]"/>
+			</on-error-continue>
+		</error-handler>
+
+		
+    </flow>
+	
+	<flow name="on-new-inbound-connection-flow">
+		<websocket:on-inbound-connection
+			doc:name="On New Inbound Connection"
+			config-ref="WebSockets_Config"
+			path="/feed" />
+		<os:contains
+			key="webSocketConnectedId"
+			target="webSocketConnected"
+			objectStore="Object_store"/>
+		<choice>
+			<when expression="#[vars.webSocketConnected]" doc:id="0d33fa6d-7d55-4427-b65a-0ddd1d7c1293">
+				<os:retrieve
+					key="webSocketConnectedId"
+					objectStore="Object_store"
+					target="webSocketConnectedId" />
+				<os:store doc:name="Store" doc:id="0b13a9ae-fb84-4b79-8489-d4bec2039383" key="webSocketConnectedId" objectStore="Object_store">
+					<os:value ><![CDATA[#[vars.webSocketConnectedId as Array ++ [attributes.socketId]]]]></os:value>
+				</os:store>
+				
+			<!-- 	<websocket:close-socket
+					socketId="#[attributes.socketId]"
+					reason="Sorry, spot taken"
+					config-ref="WebSockets_Config"/> -->
+			</when>
+			<otherwise>
+				<os:store key="webSocketConnectedId" objectStore="Object_store">
+					<os:value ><![CDATA[#[[attributes.socketId]]]]></os:value>
+				</os:store>
+			</otherwise>
+		</choice>
+	</flow>
+
+	<flow name="on-new-inbound-message-flow">
+		<websocket:inbound-listener config-ref="WebSockets_Config" path="/feed"/>
+		<logger
+			level="INFO"
+			doc:name="Logger"
+			message="#[output application/json
+		---
+		{
+			info: 'New message received from [' ++ attributes.socketId ++ ']',
+			payload : payload
+		}]" doc:id="1e1149f0-921c-4fc9-ab19-797c91095380"/>
+	</flow>
+
+	<flow name="on-socket-closed-flow">
+		<websocket:on-socket-closed config-ref="WebSockets_Config" path="/feed"/>
+		<os:retrieve
+			key="webSocketConnectedId"
+			objectStore="Object_store"
+			target="webSocketConnectedId" />
+		<choice>
+			<when expression="#[attributes.socketId == vars.webSocketConnectedId]">
+				<os:remove key="webSocketConnectedId" objectStore="Object_store"/>
+			</when>
+			<otherwise >
+				<os:store doc:name="Store" doc:id="721a0a8d-0219-4dc0-8009-d373a9df854b" key="webSocketConnectedId" objectStore="Object_store">
+					<os:value ><![CDATA[#[vars.webSocketConnectedId as Array<String>  - attributes.socketId as String]]]></os:value>
+				</os:store>
+			</otherwise>
+		</choice>
+	</flow>
+
+	<flow name="close-websocket-flow">
+		<os:contains
+			key="webSocketConnectedId"
+			target="webSocketConnected"
+			objectStore="Object_store"/>
+		<choice>
+			<when expression="#[vars.webSocketConnected]">
+				<os:retrieve
+					doc:name="Retrieve"
+					key="webSocketConnectedId"
+					objectStore="Object_store"
+					target="webSocketConnectedId" />
+				<websocket:close-socket
+					config-ref="WebSockets_Config"
+					socketId="#[vars.webSocketConnectedId]"
+					reason="Producer app wanted to close the websocket"/>
+			</when>
+		</choice>
+	</flow>
+	</mule>

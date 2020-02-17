@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:websocket="http://www.mulesoft.org/schema/mule/websocket"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/websocket http://www.mulesoft.org/schema/mule/websocket/current/mule-websocket.xsd">
+	
+	 <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="localhost" port="62000" />
+    </http:listener-config>
+
+    <websocket:config name="WebSockets_Client_App_Config">
+        <websocket:connection>
+            <!-- <websocket:client-settings host="localhost" port="61001"> -->
+            <websocket:client-settings host="localhost" port="8083">
+            </websocket:client-settings>
+        </websocket:connection>
+    </websocket:config>
+
+<!--     <flow name="aggregator-app-websocket-open-flow">
+        <http:listener doc:name="Listener"
+		config-ref="HTTP_Listener_config"
+		path="open-aggregator-ws"/>
+        <set-variable value="#[attributes.queryParams.*ticker]" variableName="groups"/>
+        <logger level="INFO" doc:name="Logger" doc:id="1a264fd2-e4a6-4314-a0dc-0b9f014495fd" message="#[vars.groups]"/>
+		<websocket:open-outbound-socket
+		config-ref="WebSockets_Client_App_Config"
+		defaultGroups="#[vars.groups]" path="/quotes"/> -->
+<flow name="aggregator-app-websocket-open-flow">
+        <http:listener doc:name="Listener"
+		config-ref="HTTP_Listener_config"
+		path="quoteclient"/>
+		<websocket:open-outbound-socket
+		config-ref="WebSockets_Client_App_Config"
+		path="/feed">
+		</websocket:open-outbound-socket>
+    </flow>
+
+    <flow name="stock-quotes-clientFlow">
+        <websocket:outbound-listener
+		config-ref="WebSockets_Client_App_Config"
+		path="/feed"
+		outputMimeType="application/json"/>
+        <logger level="INFO" doc:name="Logger" message="#[output application/json
+            ---
+            {
+                info: 'New message received on QUOTE CLIENT [' ++ attributes.socketId ++ ']',
+                payload: payload
+            }]" doc:id="88d0dfd2-fb07-4d90-8eb0-1868c84f2f56"/>
+    </flow>
+	</mule>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:websocket="http://www.mulesoft.org/schema/mule/websocket"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/websocket http://www.mulesoft.org/schema/mule/websocket/current/mule-websocket.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	
+	<http:listener-config name="httpListenerConfig" basePath="/regularHttp">
+   <http:listener-connection host="0.0.0.0" port="8081" />
+</http:listener-config>
+
+
+	<websocket:config name="WebSockets_Config_Send" doc:name="WebSockets Config" doc:id="a0cbd4fb-24b5-461d-9df1-e91796ec2503" >
+		<websocket:connection >
+			<websocket:client-settings host="localhost" port="8080" basePath="/websocketserver" />			
+		</websocket:connection>
+	</websocket:config>
+	<websocket:config name="WebSockets_Config-sample" doc:name="WebSockets Config" doc:id="c47e1b4d-aa28-499b-9780-a67cc9941366" >
+		<websocket:connection >
+			<websocket:client-settings host="echo.websocket.org" port="443" protocol="WSS" />
+		</websocket:connection>
+	</websocket:config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="dc87ff59-b49f-472b-921d-1fd35f68a9f1" maxEntries="900000000" entryTtl="900000000" />
+	<flow name="websocket-client-test" doc:id="79f112eb-ab1c-4e5b-bbdd-622dcbd03eaf" >
+		<http:listener doc:name="Listener" doc:id="480ddcb6-e53b-46d0-a899-efd2974f93dc" config-ref="httpListenerConfig" path="/test"/>
+		<set-variable value='#[%dw 2.0
+output application/json
+---
+{
+	"inputD" : payload
+}]' doc:name="Set Variable - input message" doc:id="6694c8c9-cf79-4076-86da-eceb34f81948" variableName="messageData"/>
+		<flow-ref doc:name="objectValidate_Sub_Flow" doc:id="d72aae97-df74-4c8f-9dc7-49de3fb7e66a" name="objectValidate_Sub_Flow" />
+		<flow-ref doc:name="Flow Reference  --  sendFlow" doc:id="b5a7f2d9-c1e3-4883-9e71-c733d3bb9c32" name="sendFlow" />
+		<logger level="INFO" doc:name="Logger" doc:id="09f8d213-534e-464b-b6db-854774294f5a" message="#[vars.orgsocketid.socketid]------------------------]"/>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6213e341-74a2-40b6-9d8f-362e4642f31c" >
+				<logger level="INFO" doc:name="Logger" doc:id="5f548b1b-ab89-408e-a732-cf14addc63fa" message="======================-#[payload]--------#[error]"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<sub-flow name="sendFlow" doc:id="063cdf1d-a085-49c4-a2cc-d60d64789990" >
+		<flow-ref doc:name="storeObjectStore-flow-Store Socket id" doc:id="b6eaf240-1700-43c2-aed5-bb1bb25bc54c" name="storeObjectStore-flow"/>
+		<websocket:send doc:name="Send" doc:id="7a0b7c57-956e-4d22-90ce-7c681508e41e" config-ref="WebSockets_Config_Send" socketId="#[vars.orgsocketid.socketid]">
+			<websocket:content><![CDATA[#[%dw 2.0
+output application/json
+---
+vars.messageData.inputD]]]></websocket:content>
+		</websocket:send>
+	</sub-flow>
+	<flow name="response-message-Flow" doc:id="0f41353a-dcff-42f0-ae2f-04a09cdd91a3" >
+		<websocket:outbound-listener doc:name="On New Outbound Message" doc:id="5a329ee8-2e9b-4a1b-bceb-27a83298e0fe" config-ref="WebSockets_Config_Send" path="/websocket"/>
+		<ee:transform doc:name="Transform Message" doc:id="1dc9f9cc-3ac8-4a48-bbdb-726e59b41cc2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	
+	"payload" : payload,
+	"socketid" : attributes.socketId,
+	"sockettype" :  attributes.groups,
+	"path": attributes.path,
+	"requestUri" : attributes.requestUri,
+	"schema" :  attributes..schema,
+	"queryParams" : attributes.queryParams,
+	"headers": attributes.headers,
+	"uriParams": attributes.uriParams,
+	"method": attributes.method,
+	"queryString" : attributes.queryString 
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="4724ebd1-e72d-4f08-9c8f-8c91d38c1c42" message="#[payload.socketid]===================================#[payload.payload]"/>
+	</flow>
+	<sub-flow name="objectValidate_Sub_Flow" doc:id="84f58e4f-2dae-44e9-8e4e-a7977bd351a5" >
+		<os:contains doc:name="Contains" doc:id="4ceabc17-26d5-4156-aa07-c0029585dbc2" key="socketid" objectStore="Object_store"/>
+		<choice doc:name="Choice" doc:id="751588f1-dba7-45b1-98f2-67b280504d13" >
+			<when expression="#[payload == true]">
+				<flow-ref doc:name="retrieve-flow-object" doc:id="b19a4e5a-da10-4014-bdf2-7e2238f54a4e" name="retrieve-flow-object"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="8d4f5f82-7cfb-4275-b598-8db75506cb52" message="----------------------------------- #['socket id Not found']"/>
+				<websocket:open-outbound-socket doc:name="Open outbound socket" doc:id="61fd8142-42bd-44f4-b763-d0075bf1f653" config-ref="WebSockets_Config_Send" path="/websocket" />
+				<ee:transform doc:name="Transform Message" doc:id="1173a383-17a3-4f3d-b580-d7cfca36b81d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	
+	"payload" : payload,
+	"socketid" : attributes.socketId,
+	"sockettype" :  attributes.groups,
+	"path": attributes.path,
+	"requestUri" : attributes.requestUri,
+	"schema" :  attributes..schema,
+	"queryParams" : attributes.queryParams,
+	"headers": attributes.headers,
+	"uriParams": attributes.uriParams,
+	"method": attributes.method,
+	"queryString" : attributes.queryString 
+	
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="orgsocketid"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"socketid" : attributes.socketId
+
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="806dabb1-9ad8-4f67-93b5-a57a4f81e3dd" message="#[vars.orgsocketid]"/>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="1460daac-60b4-4814-97fb-b3c2255e1602" message="------------------------------------------------------------------------------------------"/>
+	</sub-flow>
+	<sub-flow name="storeObjectStore-flow" doc:id="bf03428e-779f-4f86-9f5d-f53abfce65ba" >
+		<os:store doc:name="Store" doc:id="be73a3c7-b2ba-467e-8053-2ad34984b6c1" key="socketid" objectStore="Object_store">
+			<os:value ><![CDATA[#[%dw 2.0
+output application/json
+---
+vars.orgsocketid]]]></os:value>
+		</os:store>
+	</sub-flow>
+	<sub-flow name="retrieve-flow-object" doc:id="f9f75b30-47dc-4971-a4ee-9cd6418d1b1c" >
+		<try doc:name="Try" doc:id="089df86f-9ee1-4c09-80ac-dfd1d16af0ee" >
+			<os:retrieve doc:name="Retrieve" doc:id="9008a628-b095-44e2-99c3-d7dfa80d6a07" key="socketid" objectStore="Object_store" target="orgsocketid" />
+			<logger level="INFO" doc:name="Logger" doc:id="5699daa8-925c-4f6a-af59-627dc5504808" message="-----------------------------------------------#[vars.orgsocketid]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9eb1f2ca-b8de-40c1-8b6d-a58fcb714f75" >
+					<set-variable value="#['']" doc:name="Set Variable - objsocketid" doc:id="ef6fc5a2-61cd-4a6e-9161-4b2821d139ef" variableName="objsocketid"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<flow name="closeconnection-flow" doc:id="0e7d0ef0-4c34-471c-9e64-642bc6eb259b" >
+		<http:listener doc:name="Listener" doc:id="c93e1421-64ce-4a7c-99f2-d2327e600e8d" config-ref="httpListenerConfig" path="/closeconnection"/>
+		<flow-ref doc:name="Flow Reference -retrieve-flow-object" doc:id="d46a0e6b-61d5-4b47-ab99-31ab64a3fabe" name="retrieve-flow-object"/>
+		<os:remove doc:name="Remove" doc:id="72399d07-e2cb-4942-b909-e99c3c80b17e" key="socketid" objectStore="Object_store"/>
+		<websocket:close-socket doc:name="Close socket" doc:id="95a99010-7e2b-4ad9-81cb-a071d5ac6f80" config-ref="WebSockets_Config_Send" socketId="#[vars.orgsocketid.socketid]" reason="#['By Force']"/>
+		<logger level="INFO" doc:name="Logger" doc:id="03eef535-e7b6-4804-912f-f19ca70a2fbb" message="--------------------------------------------deleted"/>
+	</flow>
+	<flow name="websocket-client" doc:id="82f02d26-544f-46cd-9370-31d542e56ff3" >
+		<http:listener doc:name="Listener" doc:id="ada51f43-8310-49f0-935e-c51e1ea22955" config-ref="httpListenerConfig" path="/secondpartner"/>
+		<flow-ref doc:name="Flow Reference" doc:id="b9f5104a-2180-45ed-ad3b-c1da2c7947a0" name="retrieve-flow-object"/>
+		<websocket:send doc:name="Send" doc:id="1a7a6d03-6c36-44ac-82ec-7322dd780518" config-ref="WebSockets_Config_Send" socketId="#[vars.objsocketid]"/>
+	</flow>
+	
+	
+</mule>
